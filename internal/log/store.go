@@ -38,15 +38,17 @@ func (s *store) Append(p []byte)(uint64, uint64, error) {
 
 	pos := s.size
 	if err := binary.Write(s.buf, binary.BigEndian, uint64(len(p))); err != nil {
-		return 0, 0, nil
+		return 0, 0, err
 	}
 	nn, err := s.buf.Write(p)
 	if err != nil {
-		return 0, 0, nil
+		return 0, 0, err
 	}
 
-	total := uint64(nn) + 8 // 8 -> prefix length
-	return total, pos, nil
+	nn += 8 // 8 -> prefix length
+	s.size += uint64(nn)
+
+	return uint64(nn), pos, nil
 }
 
 // Read reads a record from the store at the given position.
@@ -80,21 +82,13 @@ func (s *store) ReadAt(p []byte, pos uint64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.Flush(); err != nil {
-		return 0, nil
+	if err := s.buf.Flush(); err != nil {
+		return 0, err
 	}
 
 	return s.file.ReadAt(p, int64(pos))
 }
 
-// Flush writes any buffered data to the underlying file.
-// Returns any error encountered during flush
-func (s *store) Flush() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.buf.Flush()
-}
 
 // Close flushes any remaining buffered data and closes the file.
 // Returns any error from flush or close
@@ -102,7 +96,7 @@ func (s *store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.Flush(); err != nil {
+	if err := s.buf.Flush(); err != nil {
 		return err
 	}
 
