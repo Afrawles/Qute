@@ -92,14 +92,24 @@ func testReadAt(t testing.TB, s *store) {
 }
 
 
-func TestAppendRead(t *testing.T) {
+func TestStore(t *testing.T) {
 	s, _, cleanup := setup(t)
-	defer cleanup()
+    defer cleanup()
 
-	testAppend(t, s)
-	testRead(t, s)
-	testReadAt(t, s)
+	tests := []struct{
+		name string
+		test func(t testing.TB, s *store)
+	}{
+		{"append", testAppend},
+		{"read", testRead},
+		{"readAt", testReadAt},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.test(t, s)
+		})
+	}
 }
 
 func TestAppendCloseRead(t *testing.T) {
