@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package log.v1;
+
+option go_package = "github.com/Afrawles/Qute/api/log_v1";
+
+message Message {
+  bytes key = 1;
+  bytes value = 2;
+  string topic = 3;
+  uint32 partition = 4;
+  uint64 offset = 5;
+  uint64 timestamp = 6;
+  uint32 size = 7;
+  uint32 crc = 8;
+}

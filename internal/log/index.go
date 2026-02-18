@@ -43,8 +43,8 @@ func newIndex(f *os.File, cfg Config) (*index, error) {
 
 // ReadAt takes in offset & returns the relative 
 // offset, postion in store
-func (idx *index) readAt(offset int64) (uint32, uint64, error) {
-	pos := uint64(offset) * entryWidth
+func (idx *index) readAt(offset uint64) (uint32, uint64, error) {
+	pos := offset * entryWidth
 	if idx.size == 0 {
 		return 0, 0, io.EOF
 	}
@@ -106,4 +106,11 @@ func (idx *index) close() error {
 
 func (idx *index) mmapCapacity() uint64 {
 	return uint64(len(idx.mmap))
+}
+
+func (idx *index) readLast() (uint32, uint64, error) {
+    if idx.size == 0 {
+        return 0, 0, io.EOF
+    }
+    return idx.readAt(uint64(idx.size/entryWidth) - 1)
 }
