@@ -38,7 +38,7 @@ func TestIndex(t *testing.T) {
 		}
 
 		for i, entry := range entries {
-			gotOffset, gotPos, err := idx.readAt(int64(i))
+			gotOffset, gotPos, err := idx.readAt(uint64(i))
 			assert.Equal(t, err, nil)
 			assert.Equal(t, gotOffset, entry.offset)
 			assert.Equal(t, gotPos, entry.pos)
