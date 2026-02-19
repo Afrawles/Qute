@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	api "github.com/Afrawles/Qute/api/v1"
 	"google.golang.org/protobuf/proto"
@@ -21,6 +22,7 @@ type segment struct {
 	baseOffset uint64
 	nextOffset uint64
 	config Config
+	mu sync.RWMutex
 }
 
 
@@ -68,6 +70,9 @@ func newSegment(dir string, baseOffset uint64, cfg Config) (*segment, error) {
 // write adds message to segment and 
 // returns offset
 func (s *segment) write(message *api.Message) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.isFull() {
 		return 0, io.EOF 
 	}
@@ -96,6 +101,9 @@ func (s *segment) write(message *api.Message) (uint64, error) {
 
 // read returns message/ record for given offset
 func (s *segment) read(off uint64) (*api.Message, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if off < s.baseOffset {
 		return nil, fmt.Errorf("offset before base offset")
 	}
@@ -126,6 +134,8 @@ func (s *segment) close() error {
 }
 
 func (s *segment) remove() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.close(); err != nil {
 		return err
 	}

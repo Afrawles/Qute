@@ -18,4 +18,4 @@ test: ## Run all tests
 	go test -v ./...
 
 test-run: ## Run specific test e.g. make test-run T=TestIndex P=./internal/log
-	go test -v -count=1 -run $(T) $(P)
+	go test -v --race -count=1 -run $(T) $(P)
