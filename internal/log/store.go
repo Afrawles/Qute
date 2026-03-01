@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// TODO: add CRC - currupted messges
 type store struct {
 	file *os.File
 	buf *bufio.Writer
