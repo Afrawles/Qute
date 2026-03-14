@@ -11,7 +11,7 @@ import (
 
 var (
 	data = []byte("testing store")
-	width = uint64(len(data)) + 8 
+	width = uint64(len(data)) + lenWidth + crcWidth
 )
 
 func setup(t testing.TB) (*store, string, func()) {
@@ -74,8 +74,16 @@ func testRead(t testing.TB, s *store) {
 func testReadAt(t testing.TB, s *store) {
 	t.Helper()
 	for i, pos := uint64(1), uint64(0); i <= 5; i++ {
+		// skip crc
+		crc := make([]byte, crcWidth)
+		n, err := s.ReadAt(crc, pos)
+		assert.Equal(t, err, nil)
+		assert.Equal(t, n, crcWidth)
+
+		pos += uint64(n)
+
 		prefixB := make([]byte, 8)
-		n, err := s.ReadAt(prefixB, pos)
+		n, err = s.ReadAt(prefixB, pos)
 		assert.Equal(t, err, nil)
 		assert.Equal(t, n, 8)
 

@@ -4,11 +4,27 @@ package log
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
+	"hash/crc32"
 	"os"
 	"sync"
 )
 
-// TODO: add CRC - currupted messges
+
+const (
+	lenWidth = 8
+	crcWidth = 4
+)
+
+var (
+	hasher = crc32.ChecksumIEEE
+	enc = binary.BigEndian
+)
+
+var (
+	ErrCorrupted = errors.New("record corrupted: CRC mismatch")
+)
+
 type store struct {
 	file *os.File
 	buf *bufio.Writer
@@ -38,7 +54,14 @@ func (s *store) Append(p []byte)(uint64, uint64, error) {
 	defer s.mu.Unlock()
 
 	pos := s.size
-	if err := binary.Write(s.buf, binary.BigEndian, uint64(len(p))); err != nil {
+	
+	checksum := hasher(p)
+
+	if err := binary.Write(s.buf, enc, checksum); err != nil {
+		return 0, 0, err
+	}
+
+	if err := binary.Write(s.buf, enc, uint64(len(p))); err != nil {
 		return 0, 0, err
 	}
 	nn, err := s.buf.Write(p)
@@ -46,7 +69,7 @@ func (s *store) Append(p []byte)(uint64, uint64, error) {
 		return 0, 0, err
 	}
 
-	nn += 8 // 8 -> prefix length
+	nn += lenWidth + crcWidth 
 	s.size += uint64(nn)
 
 	return uint64(nn), pos, nil
@@ -63,16 +86,23 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 		return nil, err
 	}
 	
-	size:= make([]byte, 8)
-	if _, err := s.file.ReadAt(size, int64(pos)); err != nil {
+	header := make([]byte, lenWidth+crcWidth)
+	if _, err := s.file.ReadAt(header, int64(pos)); err != nil {
 		return nil, err
 	}
 
-	length := binary.BigEndian.Uint64(size)
-	data := make([]byte, length) 
-	if _, err := s.file.ReadAt(data, int64(pos+8)); err != nil {
+	storedCRC := enc.Uint32(header[:crcWidth])
+	length := enc.Uint64(header[crcWidth:]) 
+
+	data := make([]byte, length)
+
+	if _, err := s.file.ReadAt(data, int64(pos+lenWidth+crcWidth)); err != nil {
 		return nil, err
 	} 
+
+	if hasher(data) != storedCRC {
+		return nil, ErrCorrupted
+	}
 
 	return data, nil
 }
