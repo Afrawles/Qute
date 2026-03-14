@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultSegmentMaxByteSize = 100 << 20 // 100 MBs
-	defaultIndexMaxByteSize = 100 << 20 // 100 MBs
+	defaultSegmentMaxByteSize = 100 * 1024 * 1024 // 100 MBs
+	defaultIndexMaxByteSize = 100 * 1024 * 1024 // 100 MBs
 )
 
 type messageLog struct {
@@ -125,7 +125,7 @@ func (l *messageLog) Read(off uint64) (*api.Message, error) {
 		return nil, fmt.Errorf("offset out of range: %d", off)
 	}
 
-	return s.read(uint64(pos))
+	return s.read(uint64(off))
 }
 
 func (l *messageLog) Append(message *api.Message) (uint64, error) {
