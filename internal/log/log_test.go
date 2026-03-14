@@ -23,7 +23,7 @@ func TestLog(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()
 			var cfg Config
-			cfg.Segment.MaxStoreBytes = uint64(len(msg.Value)+8) * 3
+			cfg.Segment.MaxStoreBytes = uint64(len(msg.Value)+lenWidth + crcWidth) * 3
 			cfg.Segment.MaxIndexBytes = entryWidth * 10
 
 			log, err := newMessageLog(dir, cfg)
@@ -95,7 +95,7 @@ func testReader(t *testing.T, log *messageLog) {
 	assert.Equal(t, err, nil)
 
 	got := &api.Message{}
-	err = proto.Unmarshal(b[8:], got)
+	err = proto.Unmarshal(b[lenWidth + crcWidth:], got)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, got.Value, msg.Value)
 }
@@ -105,7 +105,7 @@ func testTruncate(t *testing.T, log *messageLog) {
 
     dir := t.TempDir()
     var cfg Config
-    cfg.Segment.MaxStoreBytes = uint64(len(msg.Value) + 8)
+    cfg.Segment.MaxStoreBytes = uint64(len(msg.Value) + lenWidth + crcWidth)
     cfg.Segment.MaxIndexBytes = entryWidth * 3
     l, err := newMessageLog(dir, cfg)
     assert.Equal(t, err, nil)
