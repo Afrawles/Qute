@@ -1,6 +1,7 @@
 package log
 
 import (
+	"errors"
 	"io"
 	"os"
 	"testing"
@@ -26,7 +27,7 @@ func TestLog(t *testing.T) {
 			cfg.Segment.MaxStoreBytes = uint64(len(msg.Value)+lenWidth + crcWidth) * 3
 			cfg.Segment.MaxIndexBytes = entryWidth * 10
 
-			log, err := newMessageLog(dir, cfg)
+			log, err := NewMessageLog(dir, cfg)
 			assert.Equal(t, err, nil)
 			defer os.RemoveAll(dir)
 
@@ -39,17 +40,24 @@ func testAppendRead(t *testing.T, log *messageLog) {
 	msg := &api.Message{Value: []byte("hello world")}
 
 	off, err := log.Append(msg)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, off, uint64(0))
 
 	got, err := log.Read(off)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, got.Value, msg.Value)
 }
 
 func testOutOfRangeErr(t *testing.T, log *messageLog) {
-	_, err := log.Read(999)
-	assert.Equal(t, err != nil, true)
+	read, err := log.Read(1)
+
+	assert.Nil(t, read)
+	assert.Error(t, err)
+
+	var apiErr api.ErrOffsetOutOfRange
+	assert.True(t, errors.As(err, &apiErr))
+
+	assert.Equal(t, apiErr.Offset, uint64(1))
 }
 
 func testInitExisting(t *testing.T, log *messageLog) {
@@ -57,29 +65,29 @@ func testInitExisting(t *testing.T, log *messageLog) {
 
 	for i := 0; i < 3; i++ {
 		_, err := log.Append(msg)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
 	}
 
 	err := log.Close()
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 
 	low, err := log.LowestOffset()
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, low, uint64(0))
 
 	high, err := log.HighestOffset()
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, high, uint64(2))
 
-	n, err := newMessageLog(log.dir, log.config)
-	assert.Equal(t, err, nil)
+	n, err := NewMessageLog(log.dir, log.config)
+	assert.NoError(t, err)
 
 	low, err = n.LowestOffset()
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, low, uint64(0))
 
 	high, err = n.HighestOffset()
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, high, uint64(2))
 }
 
@@ -87,37 +95,39 @@ func testReader(t *testing.T, log *messageLog) {
 	msg := &api.Message{Value: []byte("hello world")}
 
 	off, err := log.Append(msg)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, off, uint64(0))
 
 	reader := log.NewReader()
 	b, err := io.ReadAll(reader)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 
 	got := &api.Message{}
-	err = proto.Unmarshal(b[lenWidth + crcWidth:], got)
-	assert.Equal(t, err, nil)
+	err = proto.Unmarshal(b[lenWidth+crcWidth:], got)
+	assert.NoError(t, err)
+
 	assert.Equal(t, got.Value, msg.Value)
 }
 
 func testTruncate(t *testing.T, log *messageLog) {
-    msg := &api.Message{Value: []byte("hello world")}
+	msg := &api.Message{Value: []byte("hello world")}
 
-    dir := t.TempDir()
-    var cfg Config
-    cfg.Segment.MaxStoreBytes = uint64(len(msg.Value) + lenWidth + crcWidth)
-    cfg.Segment.MaxIndexBytes = entryWidth * 3
-    l, err := newMessageLog(dir, cfg)
-    assert.Equal(t, err, nil)
+	dir := t.TempDir()
+	var cfg Config
+	cfg.Segment.MaxStoreBytes = uint64(len(msg.Value) + lenWidth + crcWidth)
+	cfg.Segment.MaxIndexBytes = entryWidth * 3
 
-    for i := 0; i < 3; i++ {
-        _, err := l.Append(msg)
-        assert.Equal(t, err, nil)
-    }
+	l, err := NewMessageLog(dir, cfg)
+	assert.NoError(t, err)
 
-    err = l.Truncate(1)
-    assert.Equal(t, err, nil)
+	for i := 0; i < 3; i++ {
+		_, err := l.Append(msg)
+		assert.NoError(t, err)
+	}
 
-    _, err = l.Read(0)
-    assert.Equal(t, err != nil, true)
+	err = l.Truncate(1)
+	assert.NoError(t, err)
+
+	_, err = l.Read(0)
+	assert.Error(t, err)
 }

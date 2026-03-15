@@ -19,8 +19,8 @@ func setup(t testing.TB) (*store, string, func()) {
 
 	dir := t.TempDir()
 	fp := filepath.Join(dir, "store_test")
-	f, err := os.OpenFile(fp, os.O_CREATE | os.O_RDWR, 0644)
-	
+
+	f, err := os.OpenFile(fp, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,27 +30,20 @@ func setup(t testing.TB) (*store, string, func()) {
 		t.Fatal(err)
 	}
 
-	// t.Cleanup(func() {
-	// 	if err := s.Close(); err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// })
-	
-	cleanup := func ()  {
+	cleanup := func() {
 		s.Close()
 	}
 
 	return s, fp, cleanup
-
 }
 
 
 func testAppend(t testing.TB, s *store) {
 	t.Helper()
 
-	for i := uint64(1); i <= 5 ; i++ {
+	for i := uint64(1); i <= 5; i++ {
 		n, pos, err := s.Append(data)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
 		assert.Equal(t, n, width)
 
 		// width*i = expected total bytes after i records
@@ -65,33 +58,37 @@ func testRead(t testing.TB, s *store) {
 	var pos uint64
 	for i := uint64(1); i <= 5; i++ {
 		p, err := s.Read(pos)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
 		assert.Equal(t, p, data)
+
 		pos += width
 	}
 }
 
 func testReadAt(t testing.TB, s *store) {
 	t.Helper()
+
 	for i, pos := uint64(1), uint64(0); i <= 5; i++ {
 		// skip crc
 		crc := make([]byte, crcWidth)
+
 		n, err := s.ReadAt(crc, pos)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
 		assert.Equal(t, n, crcWidth)
 
 		pos += uint64(n)
 
 		prefixB := make([]byte, 8)
 		n, err = s.ReadAt(prefixB, pos)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
 		assert.Equal(t, n, 8)
 
 		pos += uint64(n)
 
 		actualData := make([]byte, binary.BigEndian.Uint64(prefixB))
 		n, err = s.ReadAt(actualData, pos)
-		assert.Equal(t, err, nil)
+		assert.NoError(t, err)
+
 		assert.Equal(t, binary.BigEndian.Uint64(prefixB), uint64(n))
 		assert.Equal(t, actualData, data)
 
@@ -102,9 +99,9 @@ func testReadAt(t testing.TB, s *store) {
 
 func TestStore(t *testing.T) {
 	s, _, cleanup := setup(t)
-    defer cleanup()
+	defer cleanup()
 
-	tests := []struct{
+	tests := []struct {
 		name string
 		test func(t testing.TB, s *store)
 	}{
@@ -126,27 +123,28 @@ func TestAppendCloseRead(t *testing.T) {
 	data1 := []byte("before close")
 
 	_, pos1, err := s.Append(data1)
-	assert.Equal(t, err, nil)
-	assert.Equal(t, s.Close(), nil)
+	assert.NoError(t, err)
+
+	assert.NoError(t, s.Close())
 
 	f, err := os.OpenFile(fp, os.O_RDWR|os.O_APPEND, 0644)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 
 	s2, err := newStore(f)
-	assert.Equal(t, err, nil)
-	
+	assert.NoError(t, err)
+
 	defer s2.Close()
 
 	got1, err := s2.Read(pos1)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, got1, data1)
 
 	data2 := []byte("after reopen")
+
 	_, pos2, err := s2.Append(data2)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 
 	got2, err := s2.Read(pos2)
-	assert.Equal(t, err, nil)
+	assert.NoError(t, err)
 	assert.Equal(t, got2, data2)
-
 }
