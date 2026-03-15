@@ -77,7 +77,6 @@ go build ./...
 ### Run a 3-Node Cluster
 
 ```bash
-
 ```
 
 ---
@@ -87,13 +86,11 @@ go build ./...
 ### Produce a Message
 
 ```go
-
 ```
 
 ### Consume Messages
 
 ```go
-
 ```
 
 ---
@@ -118,8 +115,14 @@ qute/
 
 ## Status
 
-**Work in progress.** Core log, gRPC server, and Raft replication are functional. Topics and partitions are actively being built on top of the base.
+**Work in progress.** Core log, gRPC server, TLS security, observability, Raft replication, and service discovery are complete. Topics and partitions are actively being built on top of the base.
 
 ---
 
-<sub>Core log architecture based on guidance from *Distributed Services with Go* by Travis Jeffery (Pragmatic Bookshelf). Topics and partitions are original extensions.</sub>
+## Book Credit
+
+The core architecture of this project — the commit log, gRPC server, TLS/ACL security, observability, Serf-based service discovery, and Raft consensus — was built by following [*Distributed Services with Go*](https://pragprog.com/titles/tjgo/distributed-services-with-go/) by **Travis Jeffery** (Pragmatic Bookshelf, 2021).
+
+It is an exceptional book. Travis builds a real distributed system from the ground up, explaining every design decision along the way — from byte-level log storage to Raft consensus to client-side load balancing. If you are learning distributed systems in Go, read it.
+
+The **topics** and **partitions** layers in this repo are my own additions, built on top of what the book teaches.
