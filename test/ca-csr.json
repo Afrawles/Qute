@@ -1,0 +1,16 @@
+{
+  "CN": "Qute CA",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "UG",
+      "L": "KLA",
+      "ST": "Central",
+      "O": "Qute",
+      "OU": "CA Services"
+    }
+  ]
+}
