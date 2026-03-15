@@ -12,10 +12,12 @@ import (
 	api "github.com/Afrawles/Qute/api/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	"github.com/Afrawles/Qute/internal/assert"
+	"github.com/Afrawles/Qute/internal/auth"
+	"github.com/Afrawles/Qute/internal/config"
 	"github.com/Afrawles/Qute/internal/log"
 )
 
@@ -23,7 +25,11 @@ import (
 func TestServer(t *testing.T) {
 	tests := []struct {
 		name string
-		test func(t testing.TB, client api.LogClient, lg CommitLog)
+		test func(
+			t testing.TB, 
+			rootClient api.LogClient,
+			nobodyClient api.LogClient,
+			lg CommitLog)
 	}{
 		{"produce/consume works", testProduceConsume},
 		{"produce/consume stream works", testProduceConsumeStream},
@@ -31,56 +37,120 @@ func TestServer(t *testing.T) {
 		{"consume stream stops on cancel", testConsumeStreamCancel},
 		{"multiple clients concurrently", testMultipleClients},
 		{"multiple clients concurrently (streamed)", testMultipleClientsStream},
+		{"unauthorized client is denied", testUnauthorized},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, lg, teardown := setupTest(t)
+			rootClient, nobodyClient, lg, teardown := setupTest(t)
 			defer teardown()
-			tt.test(t, client, lg)
+			tt.test(t, rootClient, nobodyClient, lg)
 		})
 	}
 }
 
-// setupTest creates a listener, server, client, and teardown function
-func setupTest(t testing.TB) (client api.LogClient, lg CommitLog, teardown func()) {
+// setupTest creates a listener, server, clients with different certs, and teardown function
+func setupTest(t testing.TB) (
+	rootClient api.LogClient,
+	nobodyClient api.LogClient,
+	lg CommitLog,
+	teardown func(),
+) {
 	t.Helper()
 
-	l, err := net.Listen("tcp", ":0")
-	assert.Equal(t, nil, err)
+	// Start a TCP listener on a random available port
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
 
+	cfg, _ := config.Load() // Load paths to certs and keys
+
+	// ---------------------------------------------
+	// Setup server TLS credentials
+	// ---------------------------------------------
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      cfg.ServerCertFile,
+		KeyFile:       cfg.ServerKeyFile,
+		CAFile:        cfg.CAFile,
+		ServerAddress: l.Addr().String(),
+		Server:        true,
+	})
+	assert.NoError(t, err)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+
+	// ---------------------------------------------
+	// Setup commit log for server
+	// ---------------------------------------------
 	dir := t.TempDir()
-
 	mlog, err := log.NewMessageLog(dir, log.Config{})
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 
-	grpcServer, err := NewGRPCServer(mlog)
+	// ---------------------------------------------
+	// Setup authorizer with ACL policy file
+	// ---------------------------------------------
+	authorizer, err := auth.New(cfg.ACLModelFile, cfg.ACLPolicyFile)
+	assert.NoError(t, err)
+
+	// ---------------------------------------------
+	// Start gRPC server with config
+	// ---------------------------------------------
+	grpcServer, err := NewGRPCServer(&Config{
+		CommitLog:  mlog,
+		Authorizer: authorizer,
+	}, grpc.Creds(serverCreds))
 	assert.NoError(t, err)
 
 	go func() {
+		// Serve requests in a goroutine; ignore "closed" errors
 		if err := grpcServer.Serve(l); err != nil && !strings.Contains(err.Error(), "closed") {
 			t.Error(err)
 		}
 	}()
 
-	cc, err := grpc.NewClient(
-		l.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	assert.Equal(t, nil, err)
-	client = api.NewLogClient(cc)
+	// ---------------------------------------------
+	// Helper function to create a gRPC client with TLS
+	// ---------------------------------------------
+	newClient := func(crtPath, keyPath string) (api.LogClient, *grpc.ClientConn) {
+		tlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
+			CertFile: crtPath,
+			KeyFile:  keyPath,
+			CAFile:   cfg.CAFile,
+			Server:   false,
+		})
+		assert.NoError(t, err)
 
+		tlsCreds := credentials.NewTLS(tlsConfig)
+
+		cc, err := grpc.NewClient(
+			l.Addr().String(),
+			grpc.WithTransportCredentials(tlsCreds),
+		)
+		assert.NoError(t, err)
+
+		client := api.NewLogClient(cc)
+		return client, cc
+	}
+
+	// ---------------------------------------------
+	// Create multiple clients with different certs
+	// ---------------------------------------------
+	rootClient, rootConn := newClient(cfg.RootClientCertFile, cfg.RootClientKeyFile)
+	nobodyClient, nobodyConn := newClient(cfg.NobodyClientCertFile, cfg.NobodyClientKeyFile)
+
+	// ---------------------------------------------
+	// Teardown function to close everything
+	// ---------------------------------------------
 	teardown = func() {
 		grpcServer.Stop()
-		cc.Close()
+		rootConn.Close()
+		nobodyConn.Close()
 		l.Close()
 		mlog.Remove()
 	}
 
-	return client, mlog, teardown
+	return rootClient, nobodyClient, mlog, teardown
 }
 
-func testProduceConsume(t testing.TB, client api.LogClient, lg CommitLog) {
+func testProduceConsume(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 	want := &api.Message{Value: []byte("hello world")}
@@ -95,7 +165,7 @@ func testProduceConsume(t testing.TB, client api.LogClient, lg CommitLog) {
 	assert.Equal(t, consumeResp.Record.Offset, produceResp.Offset)
 }
 
-func testConsumePastBoundary(t testing.TB, client api.LogClient, lg CommitLog) {
+func testConsumePastBoundary(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -112,7 +182,7 @@ func testConsumePastBoundary(t testing.TB, client api.LogClient, lg CommitLog) {
 	assert.Equal(t, st.Code(), codes.NotFound)
 }
 
-func testProduceConsumeStream(t testing.TB, client api.LogClient, lg CommitLog) {
+func testProduceConsumeStream(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -142,7 +212,7 @@ func testProduceConsumeStream(t testing.TB, client api.LogClient, lg CommitLog) 
 	}
 }
 
-func testConsumeStreamCancel(t testing.TB, client api.LogClient, lg CommitLog) {
+func testConsumeStreamCancel(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -180,7 +250,7 @@ func testConsumeStreamCancel(t testing.TB, client api.LogClient, lg CommitLog) {
 	assert.Equal(t, st.Code(), codes.Canceled)
 }
 
-func testMultipleClients(t testing.TB, client api.LogClient, lg CommitLog) {
+func testMultipleClients(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -242,7 +312,7 @@ func testMultipleClients(t testing.TB, client api.LogClient, lg CommitLog) {
 	}
 }
 
-func testMultipleClientsStream(t testing.TB, client api.LogClient, lg CommitLog) {
+func testMultipleClientsStream(t testing.TB, client, _ api.LogClient, lg CommitLog) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -310,5 +380,28 @@ func testMultipleClientsStream(t testing.TB, client api.LogClient, lg CommitLog)
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("consumers did not finish in time")
+	}
+}
+
+func testUnauthorized(t testing.TB, _, nobodyClient api.LogClient, lg CommitLog) {
+	t.Helper()
+	ctx := context.Background()
+
+	produce, err := nobodyClient.Produce(ctx, &api.ProduceRequest{
+		Record: &api.Message{Value: []byte("hello world")},
+	})
+	assert.Equal(t, produce, (*api.ProduceResponse)(nil))
+
+	gotCode, wantCode := status.Code(err), codes.PermissionDenied
+	if gotCode != wantCode {
+		t.Fatalf("got code: %d, want: %d", gotCode, wantCode)
+	}
+
+	consume, err := nobodyClient.Consume(ctx, &api.ConsumeRequest{Offset: 0})
+	assert.Equal(t, consume, (*api.ConsumeResponse)(nil))
+
+	gotCode, wantCode = status.Code(err), codes.PermissionDenied
+	if gotCode != wantCode {
+		t.Fatalf("got code: %d, want: %d", gotCode, wantCode)
 	}
 }

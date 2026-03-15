@@ -34,3 +34,8 @@ go.work.sum
 .DS_Store
 
 notes.txt
+
+# .gitignore
+*.pem
+*.key
+*.csr
