@@ -55,3 +55,35 @@ func NotEqual[T any](tb testing.TB, got, want T) {
 		tb.Errorf("got: %v; want: different values", got)
 	}
 }
+
+func True(tb testing.TB, cond bool) {
+	tb.Helper()
+
+	if !cond {
+		tb.Errorf("expected true, got false")
+	}
+}
+
+func Nil(tb testing.TB, v any) {
+	tb.Helper()
+
+	if !isNil(v) {
+		tb.Errorf("expected nil, got: %v", v)
+	}
+}
+
+func Error(tb testing.TB, err error) {
+	tb.Helper()
+
+	if err == nil {
+		tb.Errorf("expected error, got nil")
+	}
+}
+
+func NoError(tb testing.TB, err error) {
+	tb.Helper()
+
+	if err != nil {
+		tb.Errorf("unexpected error: %v", err)
+	}
+}

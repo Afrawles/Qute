@@ -14,3 +14,27 @@ message Message {
   uint32 size = 7;
   uint32 crc = 8;
 }
+
+service Log {
+  rpc Produce(ProduceRequest) returns (ProduceResponse) {}
+  rpc Consume(ConsumeRequest) returns (ConsumeResponse) {}
+  rpc ProduceStream(stream ProduceRequest) returns (stream ProduceResponse) {}
+  rpc ConsumeStream(ConsumeRequest) returns (stream ConsumeResponse) {}
+}
+
+message ProduceRequest {
+  Message record = 1;
+}
+
+message ConsumeRequest {
+  uint64 offset = 1;
+}
+
+message ProduceResponse {
+  uint64 offset = 1;
+}
+
+message ConsumeResponse {
+  Message record = 1;
+}
+

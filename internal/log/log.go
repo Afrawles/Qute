@@ -2,7 +2,6 @@ package log
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -33,7 +32,7 @@ type storeReader struct {
 	off uint64
 }
 
-func newMessageLog(dir string, cfg Config) (*messageLog, error) {
+func NewMessageLog(dir string, cfg Config) (*messageLog, error) {
 	if cfg.Segment.MaxStoreBytes == 0 {
 		cfg.Segment.MaxStoreBytes = defaultSegmentMaxByteSize
 	}
@@ -117,12 +116,12 @@ func (l *messageLog) Read(off uint64) (*api.Message, error) {
 	}) - 1
 
 	if  pos < 0 {
-		return nil, fmt.Errorf("offset out of range: %d", off)
+		return nil, api.ErrOffsetOutOfRange{Offset: off} 
 	}
 
 	s := l.segments[pos]
 	if s.nextOffset <= off {
-		return nil, fmt.Errorf("offset out of range: %d", off)
+		return nil, api.ErrOffsetOutOfRange{Offset: off}
 	}
 
 	return s.read(uint64(off))
